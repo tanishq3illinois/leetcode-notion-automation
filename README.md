@@ -1,6 +1,6 @@
 # LeetCode Notion Automation
 
-A simple Express+Node server that uses the open-source[LeetCode Query API](https://jacoblin.cool/LeetCode-Query/index.html) and the [Notion JavaScript SDK](https://developers.notion.com/) to streamline the process of logging and tracking completed LeetCode problems by uploading them into a Notion database.
+A simple Express+Node server that uses the open-source [LeetCode Query API](https://jacoblin.cool/LeetCode-Query/index.html) and the [Notion JavaScript SDK](https://developers.notion.com/) to streamline the process of logging and tracking completed LeetCode problems by uploading them into a Notion database.
 
 ## Summary
 
@@ -69,6 +69,16 @@ npm run dev
 
 Ensure you run this in the `server` directory. The server will be running on `http://localhost:5050`. There is currently only one endpoint: `/update`. If you run this with an empty Notion database, you should see your most recent accepted submissions for all problems you've completed being added to the database. If the DB is not empty, only non-duplicate problems will be added.
 
-### Feedback
+## Feedback
 
 I am open to any and all feedback/ suggested enhancements - feel free to submit a PR or open an issue. Thanks for checking this out!
+
+## Sources and Acknowledgements
+
+LeetCode Query API: https://jacoblin.cool/LeetCode-Query/index.html
+Notion JavaScript SDK: https://developers.notion.com/
+The structure and outline of this README was inspired by user [Gbillington1's Notion x Schoology Integration](https://github.com/Gbillington1/Notion-Schoology-Integration)
+
+```
+
+```
