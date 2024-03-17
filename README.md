@@ -1,68 +1,74 @@
-# leetcode-notion-automation
+# LeetCode Notion Automation
 
-# Leetcode Notion Automation
+A simple Express+Node server that uses the open-source[LeetCode Query API](https://jacoblin.cool/LeetCode-Query/index.html) and the [Notion JavaScript SDK](https://developers.notion.com/) to streamline the process of logging and tracking completed LeetCode problems by uploading them into a Notion database.
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/taimurshaikh/leetcode-notion-automation/blob/main/LICENSE)
+## Summary
 
-> Work in Progress
+Currently imports data about LeetCode Problem Submissions into a Notion database with the following schema:
 
-## Table of Contents
+```js
+{
+    "Problem Number": "1", // number
+    "Problem Name": "Two Sum", // title
+    "Topics": "Array, Hash Map", // multi_select
+    "Difficulty": "Easy", // select
+    "Link": "https://leetcode.com/problems/two-sum/", // url
+    "Status": "Done" // select
+    "Date": "2024-03-16" // date
+}
+```
 
-- [Introduction](#introduction)
-- [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Contributing](#contributing)
-- [License](#license)
+Each entry in the database will also have page content that contains the code from the most recent submission for that particular LeetCode problem.
 
-## Introduction
+For the server to work, you will need to create an internal integration in Notion and get the token, as well as the database ID of the database you want to add the problems to. You will also need to have your `LEETCODE_SESSION_COOKIE` as requied by the LeetCode Query API (see [here](https://jacoblin.cool/LeetCode-Query/index.html)).
 
-This project aims to automate the process of tracking your Leetcode problem completion using Notion. It uses JacobLinCool's [leetcode-query API](https://github.com/JacobLinCool/LeetCode-Query) to periodically fetch recent problem submissions and the [Notion API](https://developers.notion.com/) to update the database with completionss.
-
-## Features
+## Features Checklist
 
 - [x] Leetcode problem completion tracking
 - [x] Notion database integration
-- [ ] Periodic updates
+- [ ] Periodic updates using a cron job
 - [ ] Automatically update problem status
 - [ ] Track your progress and statistics
 - [ ] Customizable settings and configurations
 - [ ] Frontend UI
 
-## Installation
-
-To use this automation tool, follow these steps:
-
-1. Clone the repository:
-
-   ```shell
-   git clone https://github.com/taimurshaikh/leetcode-notion-automation.git
-   ```
-
-2. Install the required dependencies:
-
-   ```shell
-   npm install
-   ```
-
-3. Enter your `NOTION_TOKEN` in a newly created `.env` file in the root directory. See https://developers.notion.com/docs/authorization for how to generate a token.
-
-4. Enter your `NOTION_DATBASE_ID`
-
-5. Run the automation script:
-
-   ```shell
-   npm start
-   ```
-
 ## Usage
 
-To use this tool, follow the instructions above to start the server and it will update your selected Notion database with Leetcode problems.
+To run this program, first clone this repository:
 
-## Contributing
+```
+git clone https://github.com/taimurshaikh/leetcode-notion-automation
+```
 
-Contributions are welcome! If you have any ideas, suggestions, or bug reports, please open an issue or submit a pull request.
+Currently, only the backend API is implemented - frontend is a WIP. So cd into the `server` folder and install the dependencies:
 
-## License
+```
+cd server
+npm install
+```
 
-This project is licensed under the [MIT License](https://github.com/taimurshaikh/leetcode-notion-automation/blob/main/LICENSE).
+You will need the following environment variables to successfully run the program:
+
+```bash
+# Go to https://leetcode.com, login, inspect the page, go to the Application tab, and copy the named LEETCODE_SESSION and csrftoken into the following env vars
+LEETCODE_SESSION_COOKIE
+LEETCODE_CSRF_TOKEN
+
+# Go to https://notion.so/my-integrations to create a new internal integration and get the token
+NOTION_TOKEN
+
+# Go to the Notion database you want to add the problems to and get the database ID from the URL
+NOTION_DATABASE_ID
+```
+
+Make sure that your Notion Database is shared with the Notion Integration that you created to get the `NOTION_TOKEN`, and then run the dev server:
+
+```
+npm run dev
+```
+
+Ensure you run this in the `server` directory. The server will be running on `http://localhost:5050`. There is currently only one endpoint: `/update`. If you run this with an empty Notion database, you should see your most recent accepted submissions for all problems you've completed being added to the database. If the DB is not empty, only non-duplicate problems will be added.
+
+### Feedback
+
+I am open to any and all feedback/ suggested enhancements - feel free to submit a PR or open an issue. Thanks for checking this out!
