@@ -26,7 +26,7 @@ For the server to work, you will need to create an internal integration in Notio
 
 - [x] Leetcode problem completion tracking
 - [x] Notion database integration
-- [ ] Periodic updates using a cron job
+- [x] Periodic updates using a cron job
 - [ ] Automatically update problem status
 - [ ] Track your progress and statistics
 - [ ] Customizable settings and configurations

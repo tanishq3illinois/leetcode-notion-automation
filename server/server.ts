@@ -2,6 +2,7 @@ import express from "express";
 import * as leetcode from "./leetcode";
 import * as notion from "./notion";
 import dotenv from "dotenv";
+import cron from "node-cron";
 
 dotenv.config();
 
@@ -14,7 +15,8 @@ const lc_connection_promise = (async () => {
   return lc;
 })();
 
-app.get("/update", async (req, res) => {
+// Refactor the update logic into its own function for reusability
+async function updateLeetcodeSubmissions() {
   const lc_connection = await lc_connection_promise;
   let submissions = await leetcode.getRecentSubmissions(lc_connection);
   submissions = leetcode.getNewSubmissions(submissions);
@@ -27,13 +29,22 @@ app.get("/update", async (req, res) => {
     submissions
   );
 
-  notion.updateDatabaseWithSubmissions(
+  await notion.updateDatabaseWithSubmissions(
     notion_connection,
     lc_connection,
     submissions
   );
 
-  res.json(submissions);
+  // Log or handle the submissions update result
+  console.log("Submissions updated successfully.", submissions);
+}
+
+// Schedule the update function to run every 5 minutes
+cron.schedule("*/5 * * * *", updateLeetcodeSubmissions);
+
+app.get("/update", async (req, res) => {
+  await updateLeetcodeSubmissions();
+  res.json({ message: "Update initiated." });
 });
 
 app.listen(port, () => {
