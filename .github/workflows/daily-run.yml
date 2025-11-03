@@ -1,0 +1,24 @@
+name: Daily Run
+
+on:
+    schedule:
+        - cron: "0 12 * * *" # 5 AM PT (12:00 UTC)
+
+jobs:
+    run:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  python-version: "3.x"
+
+            - name: Install dependencies
+              run: |
+                  pip install requests beautifulsoup4 jupyter nbconvert
+
+            - name: Run notebook
+              run: |
+                  jupyter nbconvert --to notebook --execute leetcode-notion-automation/leetcode_to_notion.ipynb --inplace
