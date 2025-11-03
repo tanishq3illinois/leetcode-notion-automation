@@ -3,7 +3,7 @@ import * as leetcode from "./leetcode";
 import * as notion from "./notion";
 import dotenv from "dotenv";
 import path from "path";
-import cron from "node-cron";
+// import cron from "node-cron";
 
 // Load environment variables from multiple possible locations locally
 dotenv.config(); // current working directory (e.g., server/)
@@ -22,14 +22,22 @@ const lc_connection_promise = (async () => {
 // Refactor the update logic into its own function for reusability
 async function updateLeetcodeSubmissions() {
   const lc_connection = await lc_connection_promise;
-  let submissions = await leetcode.getRecentSubmissions(lc_connection);
+  // Prefer using an explicit username (from env) so we hit the username-scoped endpoint
+  const username = process.env.LEETCODE_USERNAME;
+  let submissions = await leetcode.getRecentSubmissions(lc_connection, username);
+  console.log(`Fetched ${submissions.length} submissions from LeetCode`);
+  if (submissions.length > 0) {
+    console.log(
+      "Sample submissions:",
+      submissions.slice(0, 5).map((s: any) => ({ title: s.title, id: s.id, titleSlug: s.titleSlug, timestamp: s.timestamp }))
+    );
+  }
   submissions = leetcode.getNewSubmissions(submissions);
   submissions = leetcode.getAcceptedSubmissions(submissions);
   submissions = leetcode.removeDuplicateSubmissions(submissions);
   submissions = await notion.removeAlreadySubmittedProblems(
     notion_connection,
     lc_connection,
-    process.env.NOTION_DATABASE_ID ?? "",
     submissions
   );
 
@@ -43,12 +51,24 @@ async function updateLeetcodeSubmissions() {
   console.log("Submissions updated successfully.", submissions);
 }
 
-// Schedule the update function to run every 5 minutes
-cron.schedule("*/5 * * * *", updateLeetcodeSubmissions);
+// Removed scheduled updates; trigger manually via /update
 
 app.get("/update", async (req, res) => {
-  await updateLeetcodeSubmissions();
-  res.json({ message: "Update initiated." });
+  // Respond immediately to avoid client timeouts; run in background
+  res.json({ message: "Update started." });
+  try {
+    await updateLeetcodeSubmissions();
+  } catch (error) {
+    console.error("Manual update failed:", error);
+  }
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
 });
 
 app.listen(port, () => {

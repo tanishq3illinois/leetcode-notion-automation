@@ -4,12 +4,70 @@ let prev_submissions: Submission[] = [];
 
 export const initLeetCode = async () => {
   const credential = new Credential();
-  credential.init(process.env.LEETCODE_SESSION_COOKIE ?? "");
+  const session = process.env.LEETCODE_SESSION_COOKIE ?? "";
+  if (!session) {
+    console.warn(
+      "Warning: LEETCODE_SESSION_COOKIE is not set. LeetCode requests will likely fail."
+    );
+  }
+  credential.init(session);
   return new LeetCode(credential);
 };
 
-export const getRecentSubmissions = async (leetcode: LeetCode) => {
-  return await leetcode.submissions({ limit: 4000, offset: 0 });
+/**
+ * Fetch recent submissions in a robust way.
+ * Prefer calling `recent_submissions(username, limit)` when a username is available,
+ * otherwise fall back to `submissions()` and handle different response shapes.
+ *
+ * @param leetcode LeetCode client
+ * @param username optional LeetCode username (if available)
+ * @param limit number of submissions to fetch (when supported)
+ */
+export const getRecentSubmissions = async (
+  leetcode: LeetCode,
+  username?: string,
+  limit = 4000
+) : Promise<Submission[]> => {
+  // If a username is provided, prefer the username-scoped endpoint which is more stable
+  if (username) {
+    try {
+      // The library exposes recent_submissions(username, limit)
+      const recent: any = await (leetcode as any).recent_submissions(username, limit);
+      if (Array.isArray(recent)) return recent as Submission[];
+      // Some responses may wrap the list; try common shapes
+      if (recent && Array.isArray(recent.recentSubmissionList)) return recent.recentSubmissionList as Submission[];
+      if (recent && Array.isArray(recent.submissionList)) return recent.submissionList as Submission[];
+      // If shape unknown, return empty array but log the debug info
+      console.warn("Unexpected shape from recent_submissions():", recent);
+      return [];
+    } catch (err) {
+      console.warn("recent_submissions(username) failed:", err);
+      // Fall through to the generic submissions() below as a best-effort fallback
+    }
+  }
+
+  // Generic fallback: use submissions() and handle a few possible shapes safely
+  try {
+    const resp: any = await (leetcode as any).submissions({ limit, offset: 0 });
+
+    // If the library returns an array directly
+    if (Array.isArray(resp)) return resp as Submission[];
+
+    // If the library returns an object with submissionList.submissions
+    if (resp && resp.submissionList && Array.isArray(resp.submissionList.submissions)) {
+      return resp.submissionList.submissions as Submission[];
+    }
+
+    // If the library returns a different wrapper (some versions), try common keys
+    if (resp && Array.isArray(resp.recentSubmissionList)) return resp.recentSubmissionList as Submission[];
+
+    // Unknown shape — log and return empty array rather than throwing a raw TypeError
+    console.error("Unexpected response shape from leetcode.submissions():", resp);
+    return [];
+  } catch (err) {
+    console.error("Error fetching submissions from leetcode-query:", err);
+    return [];
+  }
 };
 
 /**

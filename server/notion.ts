@@ -25,84 +25,123 @@ export const initNotion = () => {
  */
 const updateDatabaseWithSubmission = async (
   notion: Client,
-  notion_database_id: string,
   lc: LeetCode,
   submission: Submission
 ) => {
   const problem = await getProblemFromSubmission(lc, submission);
-  const submission_detail = await lc.submission(submission.id);
+  // Try to fetch full submission details (code). If it fails, continue without code.
+  let submission_detail: any = { code: "" };
+  try {
+    if (submission && (submission as any).id) {
+      submission_detail = await (lc as any).submission((submission as any).id);
+    } else {
+      throw new Error("submission.id is not available");
+    }
+  } catch (err) {
+    console.warn("Could not fetch submission detail for", (submission as any).id, err && (err as any).message ? (err as any).message : err);
+    submission_detail = { code: "" };
+  }
 
   const createPage = async () => {
     try {
-      const response = await notion.pages.create({
-        parent: {
-          database_id: notion_database_id ?? "",
+      const database_id = process.env.NOTION_DATABASE_ID ?? "";
+      const parent = { type: "database_id" as const, database_id };
+
+      // Build properties object and include Date only if valid
+      const properties: any = {
+        "Problem Number": {
+          type: "number",
+          number: parseInt(problem.questionFrontendId),
         },
-        properties: {
-          "Problem Number": {
-            type: "number",
-            number: parseInt(problem.questionFrontendId),
-          },
-          "Problem Name": {
-            type: "title",
-            title: [
-              {
-                type: "text",
-                text: {
-                  content: problem.title,
-                },
+        "Problem Name": {
+          type: "title",
+          title: [
+            {
+              type: "text",
+              text: {
+                content: problem.title,
               },
-            ],
-          },
-          Topics: {
-            type: "multi_select",
-            multi_select: problem.topicTags.map((tag) => {
-              return {
-                name: tag.name,
-              };
-            }),
-          },
-          Difficulty: {
-            type: "select",
-            select: {
-              name: problem.difficulty,
-              color:
-                problem.difficulty === "Easy"
-                  ? "green"
-                  : problem.difficulty === "Medium"
-                  ? "orange"
-                  : "red",
             },
-          },
-          Link: {
-            type: "url",
-            url: `https://leetcode.com/problems/${problem.titleSlug}/`,
-          },
-          Status: {
-            type: "select",
-            select: {
-              name: "Done",
-              color: "green",
-            },
-          },
-          Date: {
-            type: "date",
-            date: {
-              start: new Date(submission.timestamp).toISOString(),
-            },
+          ],
+        },
+        Topics: {
+          type: "multi_select",
+          multi_select: problem.topicTags.map((tag) => ({ name: tag.name })),
+        },
+        Difficulty: {
+          type: "select",
+          select: {
+            name: problem.difficulty,
+            color:
+              problem.difficulty === "Easy"
+                ? "green"
+                : problem.difficulty === "Medium"
+                ? "orange"
+                : "red",
           },
         },
-        children: [
+        Link: {
+          type: "url",
+          url: `https://leetcode.com/problems/${problem.titleSlug}/`,
+        },
+        // Map completion status into your DB's `Importance` select property
+        Importance: {
+          type: "select",
+          select: {
+            name: "Done",
+            color: "green",
+          },
+        },
+        // Small notes field to capture submission status and language
+        notes: {
+          type: "rich_text",
+          rich_text: [
+            {
+              type: "text",
+              text: {
+                content: `Status: ${((submission as any).statusDisplay || "")} • Lang: ${((submission as any).lang || "")}`,
+              },
+            },
+          ],
+        },
+      };
+
+      // Normalize timestamp and attach Date property only when valid
+      const ts = Number((submission as any).timestamp);
+      let dateStart: string | undefined = undefined;
+      if (Number.isFinite(ts) && ts !== 0) {
+        const millis = ts < 1e12 ? ts * 1000 : ts;
+        const d = new Date(millis);
+        if (!isNaN(d.getTime())) {
+          dateStart = d.toISOString();
+        } else {
+          console.warn("Could not parse submission.timestamp into a valid date:", (submission as any).timestamp);
+        }
+      } else {
+        console.warn("Invalid or missing submission.timestamp:", (submission as any).timestamp);
+      }
+
+      if (dateStart) {
+        properties.Date = { type: "date", date: { start: dateStart } };
+      }
+
+      const response = await notion.pages.create({ parent, properties,
+  children: [
           {
             object: "block",
             type: "code",
             code: {
               caption: [],
               rich_text: [
-                {
+                submission_detail ? {
                   type: "text",
                   text: {
                     content: submission_detail.code,
+                  },
+                } : {
+                  type: "text",
+                  text: {
+                    content: "Submission detail not available.",
                   },
                 },
               ],
@@ -144,12 +183,11 @@ export const updateDatabaseWithSubmissions = async (
   submissions: Submission[]
 ) => {
   for (const submission of submissions) {
-    await updateDatabaseWithSubmission(
-      notion,
-      process.env.NOTION_DATABASE_ID ?? "",
-      lc,
-      submission
-    );
+    try {
+      await updateDatabaseWithSubmission(notion, lc, submission);
+    } catch (err) {
+      console.error(`Failed to create Notion page for ${submission.titleSlug}:`, err);
+    }
   }
 };
 
@@ -167,11 +205,11 @@ export const updateDatabaseWithSubmissions = async (
  */
 export const getDatabaseEntriesByProblemNumber = async (
   notion: Client,
-  database_id: string,
   problem_number: number
 ) => {
+  const database_id = process.env.NOTION_DATABASE_ID ?? "";
   const response = await notion.databases.query({
-    database_id: database_id,
+    database_id,
     filter: {
       property: "Problem Number",
       number: {
@@ -198,22 +236,22 @@ export const getDatabaseEntriesByProblemNumber = async (
 export const removeAlreadySubmittedProblems = async (
   notion: Client,
   lc: LeetCode,
-  database_id: string,
   submissions: Submission[]
 ) => {
   const new_submissions: Submission[] = [];
   for (const submission of submissions) {
-    const entries = await getDatabaseEntriesByProblemNumber(
-      notion,
-      database_id,
-      parseInt(
-        (
-          await getProblemFromSubmission(lc, submission)
-        ).questionFrontendId
-      )
-    );
+    const problem = await getProblemFromSubmission(lc, submission);
+    const problemNumber = parseInt(problem.questionFrontendId);
+    const entries = await getDatabaseEntriesByProblemNumber(notion, problemNumber);
+    console.log(`Checked Notion for problem ${problemNumber} (${submission.titleSlug}) — entries found: ${entries.length}`);
     if (entries.length === 0) {
       new_submissions.push(submission);
+    } else {
+      // Optionally log the IDs of existing pages for debugging
+      try {
+        const ids = entries.map((e: any) => e.id).slice(0, 5);
+        console.log(`Existing page ids for problem ${problemNumber}:`, ids);
+      } catch (e) {}
     }
   }
   return new_submissions;
