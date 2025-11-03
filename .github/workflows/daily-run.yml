@@ -10,15 +10,23 @@ jobs:
         steps:
             - uses: actions/checkout@v3
 
-            - name: Set up Python
-              uses: actions/setup-python@v4
+            - name: Set up Node
+              uses: actions/setup-node@v4
               with:
-                  python-version: "3.x"
+                  node-version: "20"
 
-            - name: Install dependencies
+            - name: Install server dependencies
+              working-directory: leetcode-notion-automation/server
               run: |
-                  pip install requests beautifulsoup4 jupyter nbconvert
+                  npm ci
 
-            - name: Run notebook
+            - name: Build TypeScript
+              working-directory: leetcode-notion-automation/server
               run: |
-                  jupyter nbconvert --to notebook --execute leetcode-notion-automation/leetcode_to_notion.ipynb --inplace
+                  npx tsc -p .
+
+            - name: Run automation (adjust as needed)
+              working-directory: leetcode-notion-automation/server
+              run: |
+                  node dist/server.js & sleep 10 && curl -sS http://localhost:5050/update || true
+                  pkill -f "node dist/server.js" || true
