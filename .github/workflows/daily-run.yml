@@ -1,38 +1,38 @@
 name: Daily Run
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 12 * * *" # 5 AM PT (12:00 UTC)
+    workflow_dispatch:
+    schedule:
+        - cron: "0 12 * * *" # 5 AM PT (12:00 UTC)
 
 jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+    run:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+            - name: Set up Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
 
-      - name: Install server dependencies
-        working-directory: server
-        run: |
-          npm ci
+            - name: Install server dependencies
+              working-directory: server
+              run: |
+                  npm install
 
-      - name: Build TypeScript
-        working-directory: server
-        run: |
-          npx tsc -p .
+            - name: Build TypeScript
+              working-directory: server
+              run: |
+                  npx tsc -p .
 
-      - name: Run automation (one-shot)
-        working-directory: server
-        env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          LEETCODE_SESSION_COOKIE: ${{ secrets.LEETCODE_SESSION_COOKIE }}
-          LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
-          LEETCODE_USERNAME: ${{ secrets.LEETCODE_USERNAME }}
-        run: |
-          npm run update:one-shot
+            - name: Run automation (one-shot)
+              working-directory: server
+              env:
+                  NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+                  NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+                  LEETCODE_SESSION_COOKIE: ${{ secrets.LEETCODE_SESSION_COOKIE }}
+                  LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+                  LEETCODE_USERNAME: ${{ secrets.LEETCODE_USERNAME }}
+              run: |
+                  npm run update:one-shot
