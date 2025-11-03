@@ -2,9 +2,13 @@ import express from "express";
 import * as leetcode from "./leetcode";
 import * as notion from "./notion";
 import dotenv from "dotenv";
+import path from "path";
 import cron from "node-cron";
 
-dotenv.config();
+// Load environment variables from multiple possible locations locally
+dotenv.config(); // current working directory (e.g., server/)
+dotenv.config({ path: path.resolve(__dirname, "../.env") }); // project root (leetcode-notion-automation/.env)
+dotenv.config({ path: path.resolve(__dirname, "../../.env") }); // monorepo root if applicable
 
 const app = express();
 const port = 5050;
