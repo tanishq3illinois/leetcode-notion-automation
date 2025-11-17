@@ -69,7 +69,7 @@ app.get("/problem/:titleSlug/companies", async (req, res) => {
   try {
     const lc = await lc_connection_promise;
     const problem = await (lc as any).problem(titleSlug);
-    const companies = notion.getCompaniesFromProblem(problem);
+    const companies = await notion.getCompaniesFromProblem(problem, lc);
     const hasGoogle = companies.some((c) => c.toLowerCase() === "google");
     res.json({ titleSlug, companies, hasGoogle });
   } catch (err) {
@@ -93,7 +93,7 @@ app.get("/submissions/check-google", async (req, res) => {
     for (const submission of submissions) {
       try {
         const problem = await (lc as any).problem(submission.titleSlug);
-        const companies = notion.getCompaniesFromProblem(problem);
+        const companies = await notion.getCompaniesFromProblem(problem, lc);
         const hasGoogle = companies.some((c) => c.toLowerCase() === "google");
         results.push({ titleSlug: submission.titleSlug, companies, hasGoogle });
       } catch (err) {

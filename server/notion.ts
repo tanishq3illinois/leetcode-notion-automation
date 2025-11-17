@@ -51,7 +51,7 @@ const updateDatabaseWithSubmission = async (
       // await to fetch the DB schema so we do this before building the
       // properties object). This lets `Company` be a `Text`/`rich_text` or a
       // multi_select without relying on a particular schema in the user's DB.
-      const companies = getCompaniesFromProblem(problem);
+      const companies = await getCompaniesFromProblem(problem, lc);
       const companyPropType = await getNotionPropertyType(notion, "Company");
       let companyPropertyEntry: any;
       if (companyPropType === "multi_select") {
@@ -251,7 +251,15 @@ export const getDatabaseEntriesByProblemNumber = async (
  * @param problem any - the LeetCode problem object
  * @returns string[] - the list of company names that appear on the problem
  */
-export const getCompaniesFromProblem = (problem: any): string[] => {
+const slugToName = (slug: string) => {
+  if (!slug) return "";
+  return slug
+    .split("-")
+    .map((s) => s.replace(/(^|\s)\S/g, (c) => c.toUpperCase()))
+    .join(" ");
+};
+
+export const getCompaniesFromProblem = async (problem: any, lc?: LeetCode): Promise<string[]> => {
   if (!problem) return [];
 
   // Try a few common property names
@@ -266,7 +274,13 @@ export const getCompaniesFromProblem = (problem: any): string[] => {
         if (c.name) return c.name;
         if (c.companyName) return c.companyName;
         if (c.company && typeof c.company === "string") return c.company;
+        // If the LeetCode API returns { slug: "google" }, convert to a readable name
+        if (c.slug) return slugToName(c.slug);
+        // If only an id is present, we may attempt to fetch a mapping via LeetCode
+        // GraphQL in an improved implementation. For now, fall back to stringifying
+        // the id so the client can see something.
         if (c.company && c.company.name) return c.company.name;
+        if (c.id) return String(c.id);
         return "";
       })
       .map((s: string) => s && s.trim())
@@ -286,8 +300,8 @@ export const getCompaniesFromProblem = (problem: any): string[] => {
  * @param problem any - the LeetCode problem object
  * @param companyName string - name to match (case-insensitive)
  */
-export const problemHasCompany = (problem: any, companyName: string): boolean => {
-  const companies = getCompaniesFromProblem(problem);
+export const problemHasCompany = async (problem: any, companyName: string, lc?: LeetCode): Promise<boolean> => {
+  const companies = await getCompaniesFromProblem(problem, lc);
   return companies.some((c) => c?.toLowerCase?.() === companyName.toLowerCase());
 };
 
