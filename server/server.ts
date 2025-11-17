@@ -63,6 +63,51 @@ app.get("/update", async (req, res) => {
   }
 });
 
+// Lookup the companies that have asked a given LeetCode problem by titleSlug
+app.get("/problem/:titleSlug/companies", async (req, res) => {
+  const titleSlug = req.params.titleSlug;
+  try {
+    const lc = await lc_connection_promise;
+    const problem = await (lc as any).problem(titleSlug);
+    const companies = notion.getCompaniesFromProblem(problem);
+    const hasGoogle = companies.some((c) => c.toLowerCase() === "google");
+    res.json({ titleSlug, companies, hasGoogle });
+  } catch (err) {
+    console.error("Error fetching problem companies:", err);
+    res.status(500).json({ error: "Failed to fetch problem companies" });
+  }
+});
+
+// Check whether the most recent accepted submissions are asked at Google
+app.get("/submissions/check-google", async (req, res) => {
+  try {
+    const lc = await lc_connection_promise;
+    const username = process.env.LEETCODE_USERNAME;
+    let submissions = await leetcode.getRecentSubmissions(lc, username);
+    submissions = leetcode.getNewSubmissions(submissions);
+    submissions = leetcode.getAcceptedSubmissions(submissions);
+    submissions = leetcode.removeDuplicateSubmissions(submissions);
+    submissions = await notion.removeAlreadySubmittedProblems(notion_connection, lc, submissions);
+
+    const results = [] as any[];
+    for (const submission of submissions) {
+      try {
+        const problem = await (lc as any).problem(submission.titleSlug);
+        const companies = notion.getCompaniesFromProblem(problem);
+        const hasGoogle = companies.some((c) => c.toLowerCase() === "google");
+        results.push({ titleSlug: submission.titleSlug, companies, hasGoogle });
+      } catch (err) {
+        results.push({ titleSlug: submission.titleSlug, error: String(err) });
+      }
+    }
+
+    res.json({ count: results.length, results });
+  } catch (err) {
+    console.error("Error checking Google presence for submissions:", err);
+    res.status(500).json({ error: "Failed to check Google presence for submissions" });
+  }
+});
+
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection:", reason);
 });

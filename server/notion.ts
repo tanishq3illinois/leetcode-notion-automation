@@ -104,6 +104,20 @@ const updateDatabaseWithSubmission = async (
             },
           ],
         },
+        // Company: a text field that lists companies that have asked this problem.
+        // The DB schema was changed from `review` to `Company` (Text) — map company tags
+        // from the LeetCode problem to comma-separated plain text in a Rich Text field.
+        Company: {
+          type: "rich_text",
+          rich_text: [
+            {
+              type: "text",
+              text: {
+                content: (problem && getCompaniesFromProblem(problem).join(", ")) || "",
+              },
+            },
+          ],
+        },
       };
 
       // Normalize timestamp and attach Date property only when valid
@@ -218,6 +232,53 @@ export const getDatabaseEntriesByProblemNumber = async (
     },
   });
   return response.results;
+};
+
+/**
+ * Extract a list of companies from a LeetCode problem object.
+ * This function is defensive about shapes returned by the `leetcode-query` library
+ * and by different versions of the LeetCode GraphQL schema.
+ * @param problem any - the LeetCode problem object
+ * @returns string[] - the list of company names that appear on the problem
+ */
+export const getCompaniesFromProblem = (problem: any): string[] => {
+  if (!problem) return [];
+
+  // Try a few common property names
+  const companiesCandidates = problem.companyTags || problem.companyTag || problem.companies || problem.company || problem.company_list;
+
+  if (Array.isArray(companiesCandidates)) {
+    return companiesCandidates
+      .map((c: any) => {
+        if (!c) return "";
+        if (typeof c === "string") return c;
+        // Many shapes have { name: "Google" }
+        if (c.name) return c.name;
+        if (c.companyName) return c.companyName;
+        if (c.company && typeof c.company === "string") return c.company;
+        if (c.company && c.company.name) return c.company.name;
+        return "";
+      })
+      .map((s: string) => s && s.trim())
+      .filter(Boolean);
+  }
+
+  // If it's a string separated by commas
+  if (typeof companiesCandidates === "string" && companiesCandidates.trim().length > 0) {
+    return companiesCandidates.split(",").map((s: string) => s.trim()).filter(Boolean);
+  }
+
+  return [];
+};
+
+/**
+ * Checks if a problem has been asked by a specific company (e.g., Google)
+ * @param problem any - the LeetCode problem object
+ * @param companyName string - name to match (case-insensitive)
+ */
+export const problemHasCompany = (problem: any, companyName: string): boolean => {
+  const companies = getCompaniesFromProblem(problem);
+  return companies.some((c) => c?.toLowerCase?.() === companyName.toLowerCase());
 };
 
 /**
