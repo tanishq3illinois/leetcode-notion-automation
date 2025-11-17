@@ -47,6 +47,22 @@ const updateDatabaseWithSubmission = async (
       const database_id = process.env.NOTION_DATABASE_ID ?? "";
       const parent = { type: "database_id" as const, database_id };
 
+      // Determine `Company` value and Notion property type up-front (we use an
+      // await to fetch the DB schema so we do this before building the
+      // properties object). This lets `Company` be a `Text`/`rich_text` or a
+      // multi_select without relying on a particular schema in the user's DB.
+      const companies = getCompaniesFromProblem(problem);
+      const companyPropType = await getNotionPropertyType(notion, "Company");
+      let companyPropertyEntry: any;
+      if (companyPropType === "multi_select") {
+        companyPropertyEntry = { type: "multi_select", multi_select: companies.map((c) => ({ name: c })) };
+      } else if (companyPropType === "select") {
+        companyPropertyEntry = { type: "select", select: companies.length > 0 ? { name: companies[0] } : null };
+      } else {
+        // Notion's plain 'Text' property maps to 'rich_text' in the API.
+        companyPropertyEntry = { type: "rich_text", rich_text: [{ type: "text", text: { content: companies.join(", ") } }] };
+      }
+
       // Build properties object and include Date only if valid
       const properties: any = {
         "Problem Number": {
@@ -105,20 +121,14 @@ const updateDatabaseWithSubmission = async (
           ],
         },
         // Company: a text field that lists companies that have asked this problem.
-        // The DB schema was changed from `review` to `Company` (Text) — map company tags
-        // from the LeetCode problem to comma-separated plain text in a Rich Text field.
-        Company: {
-          type: "rich_text",
-          rich_text: [
-            {
-              type: "text",
-              text: {
-                content: (problem && getCompaniesFromProblem(problem).join(", ")) || "",
-              },
-            },
-          ],
-        },
+        // The DB schema was changed from `review` to `Company` (Text).  We map
+        // company tags from the LeetCode problem and then convert them using
+        // the Notion property type we discovered above.
+        Company: companyPropertyEntry,
       };
+      
+
+      
 
       // Normalize timestamp and attach Date property only when valid
       const ts = Number((submission as any).timestamp);
@@ -279,6 +289,24 @@ export const getCompaniesFromProblem = (problem: any): string[] => {
 export const problemHasCompany = (problem: any, companyName: string): boolean => {
   const companies = getCompaniesFromProblem(problem);
   return companies.some((c) => c?.toLowerCase?.() === companyName.toLowerCase());
+};
+
+/**
+ * Retrieve the type for a property from the Notion database schema.
+ * Useful to know whether a Notion 'Text' property expects a rich_text object,
+ * or whether a 'Company' property was created as a select/multi_select.
+ */
+export const getNotionPropertyType = async (notion: Client, propertyName: string): Promise<string | null> => {
+  try {
+    const database_id = process.env.NOTION_DATABASE_ID ?? "";
+    const db: any = await notion.databases.retrieve({ database_id });
+    const prop = db?.properties?.[propertyName];
+    if (!prop) return null;
+    return prop.type;
+  } catch (err) {
+    console.warn("Could not retrieve Notion database schema for property", propertyName, err);
+    return null;
+  }
 };
 
 /**
