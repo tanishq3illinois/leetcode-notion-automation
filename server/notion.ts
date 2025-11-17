@@ -52,80 +52,75 @@ const updateDatabaseWithSubmission = async (
       // properties object). This lets `Company` be a `Text`/`rich_text` or a
       // multi_select without relying on a particular schema in the user's DB.
       const companies = await getCompaniesFromProblem(problem, lc);
-      const companyPropType = await getNotionPropertyType(notion, "Company");
-      let companyPropertyEntry: any;
-      if (companyPropType === "multi_select") {
-        companyPropertyEntry = { type: "multi_select", multi_select: companies.map((c) => ({ name: c })) };
-      } else if (companyPropType === "select") {
-        companyPropertyEntry = { type: "select", select: companies.length > 0 ? { name: companies[0] } : null };
-      } else {
-        // Notion's plain 'Text' property maps to 'rich_text' in the API.
-        companyPropertyEntry = { type: "rich_text", rich_text: [{ type: "text", text: { content: companies.join(", ") } }] };
-      }
 
-      // Build properties object and include Date only if valid
-      const properties: any = {
-        "Problem Number": {
-          type: "number",
-          number: parseInt(problem.questionFrontendId),
-        },
-        "Problem Name": {
-          type: "title",
-          title: [
-            {
-              type: "text",
-              text: {
-                content: problem.title,
+          // Always write Company as a plain text / rich_text property in Notion
+          const companyPropertyEntry = {
+            type: "rich_text",
+            rich_text: [
+              {
+                type: "text",
+                text: { content: companies.join(", ") },
+              },
+            ],
+          };
+          const properties: any = {
+            "Problem Number": {
+              type: "number",
+              number: parseInt(problem.questionFrontendId),
+            },
+            "Problem Name": {
+              type: "title",
+              title: [
+                {
+                  type: "text",
+                  text: {
+                    content: problem.title,
+                  },
+                },
+              ],
+            },
+            Topics: {
+              type: "multi_select",
+              multi_select: problem.topicTags.map((tag) => ({ name: tag.name })),
+            },
+            Difficulty: {
+              type: "select",
+              select: {
+                name: problem.difficulty,
+                color:
+                  problem.difficulty === "Easy"
+                    ? "green"
+                    : problem.difficulty === "Medium"
+                    ? "orange"
+                    : "red",
               },
             },
-          ],
-        },
-        Topics: {
-          type: "multi_select",
-          multi_select: problem.topicTags.map((tag) => ({ name: tag.name })),
-        },
-        Difficulty: {
-          type: "select",
-          select: {
-            name: problem.difficulty,
-            color:
-              problem.difficulty === "Easy"
-                ? "green"
-                : problem.difficulty === "Medium"
-                ? "orange"
-                : "red",
-          },
-        },
-        Link: {
-          type: "url",
-          url: `https://leetcode.com/problems/${problem.titleSlug}/`,
-        },
-        // Map completion status into your DB's `Importance` select property
-        Importance: {
-          type: "select",
-          select: {
-            name: "Done",
-            color: "green",
-          },
-        },
-        // Small notes field to capture submission status and language
-        notes: {
-          type: "rich_text",
-          rich_text: [
-            {
-              type: "text",
-              text: {
-                content: `Status: ${((submission as any).statusDisplay || "")} • Lang: ${((submission as any).lang || "")}`,
+            Link: {
+              type: "url",
+              url: `https://leetcode.com/problems/${problem.titleSlug}/`,
+            },
+            Importance: {
+              type: "select",
+              select: {
+                name: "Done",
+                color: "green",
               },
             },
-          ],
-        },
-        // Company: a text field that lists companies that have asked this problem.
-        // The DB schema was changed from `review` to `Company` (Text).  We map
-        // company tags from the LeetCode problem and then convert them using
-        // the Notion property type we discovered above.
-        Company: companyPropertyEntry,
-      };
+            notes: {
+              type: "rich_text",
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content: `Status: ${((submission as any).statusDisplay || "")} • Lang: ${((submission as any).lang || "")}`,
+                  },
+                },
+              ],
+            },
+            Company: companyPropertyEntry,
+          };
+      
+      
       
 
       
@@ -266,6 +261,11 @@ export const getCompaniesFromProblem = async (problem: any, lc?: LeetCode): Prom
   const companiesCandidates = problem.companyTags || problem.companyTag || problem.companies || problem.company || problem.company_list;
 
   if (Array.isArray(companiesCandidates)) {
+    // Precompute ids that need async lookup (we'll try to map these with
+    // `interviewed.companies` if available or by refetching the problem).
+    const idsToLookup = companiesCandidates
+      .filter((c: any) => c && !c.name && (c.id || (c.company && c.company.id)))
+      .map((c: any) => c.id ?? (c.company && c.company.id));
     return companiesCandidates
       .map((c: any) => {
         if (!c) return "";
@@ -274,6 +274,16 @@ export const getCompaniesFromProblem = async (problem: any, lc?: LeetCode): Prom
         if (c.name) return c.name;
         if (c.companyName) return c.companyName;
         if (c.company && typeof c.company === "string") return c.company;
+        // If the LeetCode API returns only an id for a company, LeetCode's
+        // GraphQL often includes `interviewed.companies` which maps ids to
+        // a display `name`. If present, prefer that mapping.
+        if (c.id && problem && problem.interviewed && Array.isArray(problem.interviewed.companies)) {
+          const match = (problem.interviewed.companies as any[]).find((ci) => String(ci.id) === String(c.id));
+          if (match && match.name) return match.name;
+        }
+        // If no mapping found and callers want a more accurate mapping, they
+        // may pass `lc` to enable a secondary lookup outside this synchronous
+        // callback. We do that after this mapping below.
         // If the LeetCode API returns { slug: "google" }, convert to a readable name
         if (c.slug) return slugToName(c.slug);
         // If only an id is present, we may attempt to fetch a mapping via LeetCode
@@ -285,6 +295,39 @@ export const getCompaniesFromProblem = async (problem: any, lc?: LeetCode): Prom
       })
       .map((s: string) => s && s.trim())
       .filter(Boolean);
+
+    // If there are ids without names and we have an LC client, try to fetch
+    // a mapping of those ids to names from the `interviewed.companies` info.
+    if (lc && idsToLookup.length > 0) {
+      try {
+        const fresh = await (lc as any).problem(problem.titleSlug);
+        if (fresh && fresh.interviewed && Array.isArray(fresh.interviewed.companies)) {
+          const idMap: Record<string, string> = {};
+          for (const ci of fresh.interviewed.companies) {
+            if (ci.id && ci.name) idMap[String(ci.id)] = ci.name;
+          }
+          return companiesCandidates
+            .map((c: any) => {
+              // repeat earlier mapping but prefer id-based mapping now
+              if (!c) return "";
+              if (typeof c === "string") return c;
+              if (c.name) return c.name;
+              if (c.companyName) return c.companyName;
+              if (c.company && typeof c.company === "string") return c.company;
+              if (c.slug) return slugToName(c.slug);
+              const cid = c.id ?? (c.company && c.company.id);
+              if (cid && idMap[String(cid)]) return idMap[String(cid)];
+              if (c.company && c.company.name) return c.company.name;
+              if (cid) return String(cid);
+              return "";
+            })
+            .map((s: string) => s && s.trim())
+            .filter(Boolean);
+        }
+      } catch (err) {
+        // ignore and fall back to current mapping
+      }
+    }
   }
 
   // If it's a string separated by commas
@@ -310,18 +353,9 @@ export const problemHasCompany = async (problem: any, companyName: string, lc?: 
  * Useful to know whether a Notion 'Text' property expects a rich_text object,
  * or whether a 'Company' property was created as a select/multi_select.
  */
-export const getNotionPropertyType = async (notion: Client, propertyName: string): Promise<string | null> => {
-  try {
-    const database_id = process.env.NOTION_DATABASE_ID ?? "";
-    const db: any = await notion.databases.retrieve({ database_id });
-    const prop = db?.properties?.[propertyName];
-    if (!prop) return null;
-    return prop.type;
-  } catch (err) {
-    console.warn("Could not retrieve Notion database schema for property", propertyName, err);
-    return null;
-  }
-};
+// Notion `Company` in this project is a free-text column, so always write it as
+// `rich_text`. We used to attempt multi_select / select mapping, but per your
+// note the DB always has a Text column for Company; keep logic simple.
 
 /**
  * The function removes already submitted problems from a list of submissions.
