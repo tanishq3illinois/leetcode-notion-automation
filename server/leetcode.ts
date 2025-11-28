@@ -4,13 +4,42 @@ let prev_submissions: Submission[] = [];
 
 export const initLeetCode = async () => {
   const credential = new Credential();
-  const session = process.env.LEETCODE_SESSION_COOKIE ?? "";
+  const session = process.env.LEETCODE_SESSION_COOKIE?.trim() ?? "";
+  const envCsrf = process.env.LEETCODE_CSRF_TOKEN?.trim();
+
   if (!session) {
     console.warn(
       "Warning: LEETCODE_SESSION_COOKIE is not set. LeetCode requests will likely fail."
     );
   }
-  credential.init(session);
+
+  credential.session = session;
+  if (envCsrf) {
+    credential.csrf = envCsrf;
+  }
+
+  const hasProvidedTokens = Boolean(session && envCsrf);
+  if (!hasProvidedTokens) {
+    try {
+      await credential.init(session);
+    } catch (err) {
+      console.warn(
+        "Failed to auto-initialize LeetCode credentials; proceeding with configured session/csrf.",
+        err && (err as Error).message ? (err as Error).message : err
+      );
+      credential.session = session;
+      if (envCsrf) {
+        credential.csrf = envCsrf;
+      }
+    }
+  }
+
+  if (!credential.csrf) {
+    console.warn(
+      "Warning: LEETCODE_CSRF_TOKEN is not set. LeetCode requests may require a valid csrf token."
+    );
+  }
+
   return new LeetCode(credential);
 };
 
